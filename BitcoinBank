@@ -1,0 +1,1385 @@
+import React, { useState, useEffect, useMemo } from 'react';
+import {
+  TrendingUp, TrendingDown, Eye, EyeOff, Shield, Lock, DollarSign,
+  Wallet, PieChart, RefreshCw, Search, Calendar, FileText, CheckCircle2,
+  AlertCircle, ChevronRight, ChevronDown, ArrowUpRight, ArrowDownRight,
+  HelpCircle, Settings, Home, Activity, LockKeyhole, User, LogOut,
+  PlusCircle, Download, ExternalLink, ShieldCheck, Clock, Copy, Check
+} from 'lucide-react';
+import {
+  AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid
+} from 'recharts';
+
+// --- INITIAL CONSTANTS & MOCK DATA ---
+const PHP_EXCHANGE_RATE = 57.85; // 1 USD = 57.85 PHP
+
+const INITIAL_MAMA_TRANSACTIONS = [
+  { id: 'TXN-MM-20260812-9901', date: '2026-08-12', monthYear: 'Aug 2026', amount: 10000.00, status: 'COMPLETED', description: 'Automated Monthly Savings Deposit', type: 'Time Deposit Top-Up' },
+  { id: 'TXN-MM-20260104-8842', date: '2026-01-04', monthYear: 'Jan 2026', amount: 40000.00, status: 'COMPLETED', description: 'New Year Capital Allocation', type: 'Time Deposit Top-Up' },
+  { id: 'TXN-MM-20251010-7721', date: '2025-10-10', monthYear: 'Oct 2025', amount: 20000.00, status: 'COMPLETED', description: 'Quarterly Investment Top-Up', type: 'Time Deposit Top-Up' },
+  { id: 'TXN-MM-20250722-6610', date: '2025-07-22', monthYear: 'Jul 2025', amount: 15000.00, status: 'COMPLETED', description: 'Mid-Year Bonus Deposit', type: 'Time Deposit Top-Up' },
+  { id: 'TXN-MM-20250418-5543', date: '2025-04-18', monthYear: 'Apr 2025', amount: 25000.00, status: 'COMPLETED', description: 'Spring Yield Contribution', type: 'Time Deposit Top-Up' },
+  { id: 'TXN-MM-20250120-4412', date: '2025-01-20', monthYear: 'Jan 2025', amount: 28472.00, status: 'COMPLETED', description: 'Initial Account Principal Deposit', type: 'Time Deposit Creation' },
+];
+
+const INITIAL_MY_TRANSACTIONS = [
+  { id: 'TXN-MY-20260905-3301', date: '2026-09-05', monthYear: 'Sep 2026', amount: 19034.00, status: 'COMPLETED', description: 'Q3 Asset Reserve Deposit', type: 'Time Deposit Top-Up' },
+  { id: 'TXN-MY-20260314-2219', date: '2026-03-14', monthYear: 'Mar 2026', amount: 30000.00, status: 'COMPLETED', description: 'Annual Yield Reinvestment', type: 'Time Deposit Top-Up' },
+  { id: 'TXN-MY-20251119-1188', date: '2025-11-19', monthYear: 'Nov 2025', amount: 25000.00, status: 'COMPLETED', description: 'Year-End Savings Allocation', type: 'Time Deposit Top-Up' },
+  { id: 'TXN-MY-20250508-0092', date: '2025-05-08', monthYear: 'May 2025', amount: 25000.00, status: 'COMPLETED', description: 'Semi-Annual Growth Deposit', type: 'Time Deposit Top-Up' },
+  { id: 'TXN-MY-20241112-0011', date: '2024-11-12', monthYear: 'Nov 2024', amount: 20000.00, status: 'COMPLETED', description: 'Initial Lock-In Account Setup', type: 'Time Deposit Creation' },
+];
+
+const CRYPTO_CONFIG = [
+  { id: 'bitcoin', symbol: 'BTC', name: 'Bitcoin', fallbackPrice: 67450, change24h: 3.42, sparkline: [65000, 65400, 64800, 66200, 66800, 67100, 67450] },
+  { id: 'ripple', symbol: 'XRP', name: 'XRP', fallbackPrice: 0.584, change24h: -1.15, sparkline: [0.60, 0.595, 0.59, 0.588, 0.582, 0.586, 0.584] },
+  { id: 'ethereum', symbol: 'ETH', name: 'Ethereum', fallbackPrice: 3480, change24h: 2.18, sparkline: [3380, 3400, 3420, 3390, 3450, 3460, 3480] },
+  { id: 'solana', symbol: 'SOL', name: 'Solana', fallbackPrice: 154.20, change24h: 5.64, sparkline: [142, 145, 148, 146, 150, 152, 154.20] },
+  { id: 'tether', symbol: 'USDT', name: 'Tether', fallbackPrice: 1.00, change24h: 0.02, sparkline: [1.0, 1.0, 0.999, 1.001, 1.0, 1.0, 1.00] },
+  { id: 'dogecoin', symbol: 'DOGE', name: 'Dogecoin', fallbackPrice: 0.132, change24h: -2.40, sparkline: [0.138, 0.136, 0.135, 0.134, 0.133, 0.131, 0.132] },
+  { id: 'binancecoin', symbol: 'BNB', name: 'BNB', fallbackPrice: 585.10, change24h: 1.05, sparkline: [575, 578, 580, 582, 581, 584, 585.10] },
+  { id: 'cardano', symbol: 'ADA', name: 'Cardano', fallbackPrice: 0.362, change24h: 0.84, sparkline: [0.355, 0.358, 0.357, 0.360, 0.359, 0.361, 0.362] },
+];
+
+const GENERATE_HISTORICAL_CHART = (basePrice, timeframe) => {
+  const points = timeframe === '24h' ? 24 : timeframe === '7d' ? 28 : 30;
+  const data = [];
+  let current = basePrice * (timeframe === '24h' ? 0.96 : timeframe === '7d' ? 0.90 : 0.82);
+  
+  for (let i = 0; i < points; i++) {
+    const randomVariation = (Math.random() - 0.47) * (basePrice * 0.02);
+    current = Math.max(current + randomVariation, basePrice * 0.5);
+    data.push({
+      time: timeframe === '24h' ? `${i}:00` : timeframe === '7d' ? `Day ${Math.floor(i/4) + 1}` : `Day ${i + 1}`,
+      price: parseFloat(current.toFixed(current < 2 ? 4 : 2))
+    });
+  }
+  data[data.length - 1].price = basePrice;
+  return data;
+};
+
+const FAQS = [
+  {
+    q: "Q1. When can I withdraw my time deposit?",
+    a: "The scheduled maturity date for both configured time deposit accounts is exactly June 30, 2030."
+  },
+  {
+    q: "Q2. Can I withdraw my money before June 30, 2030?",
+    a: "Early withdrawal is disabled under the configured account terms. Please consult the actual account agreement for non-standard early liquidation guidelines."
+  },
+  {
+    q: "Q3. Can I add more money to my account?",
+    a: "Additional deposits are subject to the actual account provider's supported deposit procedures, minimum placement terms, and account configuration."
+  },
+  {
+    q: "Q4. Can I transfer my time deposit to another account?",
+    a: "Transfers are subject to the provider's supported digital banking services, anti-money laundering verification, and applicable lock-in restrictions."
+  },
+  {
+    q: "Q5. Why is my account locked?",
+    a: "The account is configured with a fixed maturity date to maximize interest yield potential. Access to the deposited principal is restricted until maturity according to the applicable agreement."
+  },
+  {
+    q: "Q6. Will my account balance change?",
+    a: "The displayed principal balance changes only when a verified deposit, withdrawal, or applicable account adjustment is recorded. Interest yields should be displayed separately unless compounding rules apply."
+  },
+  {
+    q: "Q7. What happens on June 30, 2030?",
+    a: "The account reaches its scheduled maturity date. The available withdrawal or payout procedure depends on the actual financial institution and connected product agreement."
+  },
+  {
+    q: "Q8. Is my account active?",
+    a: "The interface displays the current active status based on local system logs. Do not mark an unverified financial account as an officially insured bank deposit without partner institution confirmation."
+  }
+];
+
+export default function App() {
+  // --- STATE MANAGEMENT ---
+  const [activeTab, setActiveTab] = useState('home'); // home, market, time-deposit, mama-detail, my-detail, transactions, faq, settings
+  const [currency, setCurrency] = useState('PHP'); // PHP or USD
+  const [hideBalances, setHideBalances] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [copiedRef, setCopiedRef] = useState(null);
+  
+  // Crypto Market States
+  const [cryptoData, setCryptoData] = useState(CRYPTO_CONFIG);
+  const [selectedAsset, setSelectedAsset] = useState(CRYPTO_CONFIG[0]);
+  const [chartTimeframe, setChartTimeframe] = useState('24h'); // 24h, 7d, 30d
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState(new Date().toLocaleTimeString());
+
+  // Time Deposit State with Persistent Storage fallback
+  const [mamaTxns, setMamaTxns] = useState(() => {
+    const saved = localStorage.getItem('btc_bank_mama_txns');
+    return saved ? JSON.parse(saved) : INITIAL_MAMA_TRANSACTIONS;
+  });
+
+  const [myTxns, setMyTxns] = useState(() => {
+    const saved = localStorage.getItem('btc_bank_my_txns');
+    return saved ? JSON.parse(saved) : INITIAL_MY_TRANSACTIONS;
+  });
+
+  // Modal State for New Deposit simulation
+  const [isDepositModalOpen, setIsDepositModalOpen] = useState(false);
+  const [depositAccountTarget, setDepositAccountTarget] = useState('mama');
+  const [depositAmount, setDepositAmount] = useState('');
+  const [depositDesc, setDepositDesc] = useState('');
+
+  // Expandable FAQ state
+  const [expandedFaq, setExpandedFaq] = useState(null);
+
+  // Save to localStorage on transaction changes
+  useEffect(() => {
+    localStorage.setItem('btc_bank_mama_txns', JSON.stringify(mamaTxns));
+  }, [mamaTxns]);
+
+  useEffect(() => {
+    localStorage.setItem('btc_bank_my_txns', JSON.stringify(myTxns));
+  }, [myTxns]);
+
+  // Dynamic Total Calculations
+  const mamaTotalPHP = useMemo(() => mamaTxns.reduce((sum, t) => sum + t.amount, 0), [mamaTxns]);
+  const myTotalPHP = useMemo(() => myTxns.reduce((sum, t) => sum + t.amount, 0), [myTxns]);
+  const totalAssetsPHP = mamaTotalPHP + myTotalPHP;
+
+  // --- CRYPTO API FETCHING ---
+  const fetchMarketPrices = async () => {
+    setIsRefreshing(true);
+    try {
+      const ids = CRYPTO_CONFIG.map(c => c.id).join(',');
+      const res = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true`);
+      if (!res.ok) throw new Error('Network error');
+      const data = await res.json();
+      
+      const updated = cryptoData.map(coin => {
+        if (data[coin.id]) {
+          const usdPrice = data[coin.id].usd;
+          const change = data[coin.id].usd_24h_change || coin.change24h;
+          // Generate realistic updated sparkline
+          const newSparkline = [...coin.sparkline.slice(1), usdPrice];
+          return {
+            ...coin,
+            fallbackPrice: usdPrice,
+            change24h: parseFloat(change.toFixed(2)),
+            sparkline: newSparkline
+          };
+        }
+        return coin;
+      });
+
+      setCryptoData(updated);
+      // Update selected asset too if open
+      const currentSelected = updated.find(c => c.id === selectedAsset.id);
+      if (currentSelected) setSelectedAsset(currentSelected);
+      setLastUpdated(new Date().toLocaleTimeString());
+    } catch (err) {
+      console.warn('API Rate limited or offline. Using configured live fallback values.', err);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchMarketPrices();
+    const interval = setInterval(fetchMarketPrices, 30000); // 30s auto refresh
+    return () => clearInterval(interval);
+  }, []);
+
+  // --- HELPER FORMATTERS ---
+  const formatMoney = (amountPHP) => {
+    if (hideBalances) return '••••••••';
+    if (currency === 'USD') {
+      const usd = amountPHP / PHP_EXCHANGE_RATE;
+      return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(usd);
+    }
+    return new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(amountPHP);
+  };
+
+  const formatCryptoPrice = (usdPrice) => {
+    if (hideBalances) return '••••••';
+    const finalPrice = currency === 'PHP' ? usdPrice * PHP_EXCHANGE_RATE : usdPrice;
+    const prefix = currency === 'PHP' ? '₱' : '$';
+    
+    if (finalPrice < 1) {
+      return `${prefix}${finalPrice.toFixed(4)}`;
+    }
+    return `${prefix}${finalPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  };
+
+  const handleCopyRef = (ref) => {
+    navigator.clipboard.writeText(ref);
+    setCopiedRef(ref);
+    setTimeout(() => setCopiedRef(null), 2000);
+  };
+
+  // Deposit Handling
+  const handleAddDeposit = (e) => {
+    e.preventDefault();
+    const numVal = parseFloat(depositAmount);
+    if (isNaN(numVal) || numVal <= 0) return;
+
+    const today = new Date();
+    const dateStr = today.toISOString().split('T')[0];
+    const monthYearStr = today.toLocaleString('default', { month: 'short', year: 'numeric' });
+    const randomSuffix = Math.floor(1000 + Math.random() * 9000);
+    const refCode = `TXN-${depositAccountTarget === 'mama' ? 'MM' : 'MY'}-${today.getFullYear()}${(today.getMonth()+1).toString().padStart(2,'0')}${today.getDate().toString().padStart(2,'0')}-${randomSuffix}`;
+
+    const newTxn = {
+      id: refCode,
+      date: dateStr,
+      monthYear: monthYearStr,
+      amount: numVal,
+      status: 'COMPLETED',
+      description: depositDesc || 'Manual Time Deposit Top-Up',
+      type: 'Time Deposit Top-Up'
+    };
+
+    if (depositAccountTarget === 'mama') {
+      setMamaTxns([newTxn, ...mamaTxns]);
+    } else {
+      setMyTxns([newTxn, ...myTxns]);
+    }
+
+    setDepositAmount('');
+    setDepositDesc('');
+    setIsDepositModalOpen(false);
+  };
+
+  // Filtered Transactions List for Search Component
+  const combinedTxns = useMemo(() => {
+    const mamaTagged = mamaTxns.map(t => ({ ...t, account: 'Mama Account' }));
+    const myTagged = myTxns.map(t => ({ ...t, account: 'My Account' }));
+    const all = [...mamaTagged, ...myTagged].sort((a, b) => new Date(b.date) - new Date(a.date));
+    if (!searchQuery) return all;
+    return all.filter(t => 
+      t.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      t.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      t.account.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      t.amount.toString().includes(searchQuery)
+    );
+  }, [mamaTxns, myTxns, searchQuery]);
+
+  // Chart data for selected asset
+  const chartData = useMemo(() => {
+    const base = currency === 'PHP' ? selectedAsset.fallbackPrice * PHP_EXCHANGE_RATE : selectedAsset.fallbackPrice;
+    return GENERATE_HISTORICAL_CHART(base, chartTimeframe);
+  }, [selectedAsset, chartTimeframe, currency]);
+
+  return (
+    <div className="min-h-screen bg-[#0A0E17] text-slate-100 flex flex-col font-sans antialiased selection:bg-yellow-500/30 selection:text-yellow-200">
+      
+      {/* TOP HEADER */}
+      <header className="sticky top-0 z-40 bg-[#121824]/90 backdrop-blur-md border-b border-slate-800/80 px-4 lg:px-8 py-3.5 flex items-center justify-between shadow-lg">
+        {/* Logo */}
+        <div className="flex items-center space-x-3 cursor-pointer" onClick={() => setActiveTab('home')}>
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-500 to-yellow-300 p-0.5 shadow-lg shadow-yellow-500/20">
+            <div className="w-full h-full bg-[#0A0E17] rounded-[10px] flex items-center justify-center">
+              <Shield className="w-5 h-5 text-amber-400 fill-amber-400/20" />
+            </div>
+          </div>
+          <div>
+            <div className="flex items-center space-x-1.5">
+              <span className="font-black tracking-wider text-lg text-white font-mono">BITCOIN</span>
+              <span className="text-xs font-semibold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30">BANK</span>
+            </div>
+            <p className="text-[10px] text-slate-400 tracking-wider">DIGITAL ASSET PLATFORM</p>
+          </div>
+        </div>
+
+        {/* Global Toolbar Controls */}
+        <div className="flex items-center space-x-3 lg:space-x-4">
+          {/* Currency Toggle */}
+          <div className="bg-[#1A2333] p-1 rounded-lg border border-slate-700/60 flex items-center space-x-1">
+            <button
+              onClick={() => setCurrency('PHP')}
+              className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-all ${
+                currency === 'PHP' 
+                  ? 'bg-amber-500 text-slate-950 shadow' 
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              ₱ PHP
+            </button>
+            <button
+              onClick={() => setCurrency('USD')}
+              className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-all ${
+                currency === 'USD' 
+                  ? 'bg-amber-500 text-slate-950 shadow' 
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              $ USD
+            </button>
+          </div>
+
+          {/* Balance Hide/Show Toggle */}
+          <button
+            onClick={() => setHideBalances(!hideBalances)}
+            className="p-2 rounded-lg bg-[#1A2333] hover:bg-slate-800 border border-slate-700/60 text-slate-300 hover:text-amber-400 transition-colors"
+            title={hideBalances ? "Show Balances" : "Hide Balances"}
+          >
+            {hideBalances ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+          </button>
+
+          {/* User Profile Quick Action */}
+          <div className="hidden sm:flex items-center space-x-2 border-l border-slate-800 pl-4">
+            <div className="w-8 h-8 rounded-full bg-slate-800 border border-amber-500/40 flex items-center justify-center text-amber-400 font-bold text-xs">
+              JD
+            </div>
+            <div className="text-left text-xs">
+              <p className="font-semibold text-slate-200">Verified User</p>
+              <p className="text-[10px] text-emerald-400 flex items-center gap-1">
+                <ShieldCheck className="w-3 h-3" /> Tier 3 Approved
+              </p>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      {/* BODY LAYOUT */}
+      <div className="flex-1 flex overflow-hidden">
+        
+        {/* DESKTOP SIDEBAR */}
+        <aside className="hidden md:flex flex-col w-64 bg-[#121824] border-r border-slate-800/80 p-4 justify-between shrink-0">
+          <div className="space-y-1.5">
+            <p className="px-3 text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-2">Navigation</p>
+            
+            <button
+              onClick={() => setActiveTab('home')}
+              className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-xl font-medium text-sm transition-all ${
+                activeTab === 'home'
+                  ? 'bg-gradient-to-r from-amber-500/20 to-transparent text-amber-400 border-l-4 border-amber-500'
+                  : 'text-slate-400 hover:bg-slate-800/50 hover:text-slate-200'
+              }`}
+            >
+              <Home className="w-4 h-4" />
+              <span>Dashboard</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('market')}
+              className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-xl font-medium text-sm transition-all ${
+                activeTab === 'market'
+                  ? 'bg-gradient-to-r from-amber-500/20 to-transparent text-amber-400 border-l-4 border-amber-500'
+                  : 'text-slate-400 hover:bg-slate-800/50 hover:text-slate-200'
+              }`}
+            >
+              <Activity className="w-4 h-4" />
+              <span>Crypto Market</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('time-deposit')}
+              className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl font-medium text-sm transition-all ${
+                ['time-deposit', 'mama-detail', 'my-detail'].includes(activeTab)
+                  ? 'bg-gradient-to-r from-amber-500/20 to-transparent text-amber-400 border-l-4 border-amber-500'
+                  : 'text-slate-400 hover:bg-slate-800/50 hover:text-slate-200'
+              }`}
+            >
+              <div className="flex items-center space-x-3">
+                <LockKeyhole className="w-4 h-4" />
+                <span>Time Deposit</span>
+              </div>
+              <span className="text-[10px] bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded font-mono font-bold">2</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('transactions')}
+              className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-xl font-medium text-sm transition-all ${
+                activeTab === 'transactions'
+                  ? 'bg-gradient-to-r from-amber-500/20 to-transparent text-amber-400 border-l-4 border-amber-500'
+                  : 'text-slate-400 hover:bg-slate-800/50 hover:text-slate-200'
+              }`}
+            >
+              <FileText className="w-4 h-4" />
+              <span>Account History</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('faq')}
+              className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-xl font-medium text-sm transition-all ${
+                activeTab === 'faq'
+                  ? 'bg-gradient-to-r from-amber-500/20 to-transparent text-amber-400 border-l-4 border-amber-500'
+                  : 'text-slate-400 hover:bg-slate-800/50 hover:text-slate-200'
+              }`}
+            >
+              <HelpCircle className="w-4 h-4" />
+              <span>Help Center / FAQ</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('settings')}
+              className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-xl font-medium text-sm transition-all ${
+                activeTab === 'settings'
+                  ? 'bg-gradient-to-r from-amber-500/20 to-transparent text-amber-400 border-l-4 border-amber-500'
+                  : 'text-slate-400 hover:bg-slate-800/50 hover:text-slate-200'
+              }`}
+            >
+              <Settings className="w-4 h-4" />
+              <span>Settings</span>
+            </button>
+          </div>
+
+          {/* Quick Action Widget */}
+          <div className="bg-[#1A2333]/80 rounded-2xl p-4 border border-slate-800 space-y-3 text-center">
+            <div className="w-8 h-8 rounded-full bg-amber-500/10 text-amber-400 flex items-center justify-center mx-auto">
+              <PlusCircle className="w-5 h-5" />
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-slate-200">Simulate Top-Up</p>
+              <p className="text-[11px] text-slate-400">Add entry to local audit ledger</p>
+            </div>
+            <button
+              onClick={() => setIsDepositModalOpen(true)}
+              className="w-full py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-bold text-xs rounded-xl shadow-lg transition-all"
+            >
+              + Add Record
+            </button>
+          </div>
+        </aside>
+
+        {/* MAIN CONTENT WORKSPACE */}
+        <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 space-y-6 pb-24 md:pb-8">
+
+          {/* NOTICE BANNER */}
+          <div className="bg-gradient-to-r from-amber-500/10 via-slate-900 to-amber-500/5 border border-amber-500/30 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-md">
+            <div className="flex items-start space-x-3">
+              <AlertCircle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+              <div className="text-xs text-slate-300 leading-relaxed">
+                <span className="font-bold text-amber-300">Important Notice:</span> Time Deposit records on this portal represent configured account tracking records. Not an officially FDIC/PDIC insured bank deposit until verified through connected partner protocols.
+              </div>
+            </div>
+            <button 
+              onClick={() => setActiveTab('faq')} 
+              className="text-xs text-amber-400 hover:text-amber-300 font-semibold underline shrink-0 whitespace-nowrap"
+            >
+              View Lock-In Policy &rarr;
+            </button>
+          </div>
+
+          {/* ==================== VIEW 1: HOME DASHBOARD ==================== */}
+          {activeTab === 'home' && (
+            <div className="space-y-6">
+              
+              {/* BALANCE OVERVIEW CARDS */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                
+                {/* Total Portfolio Value */}
+                <div className="bg-[#121824] rounded-2xl p-5 border border-slate-800 relative overflow-hidden group hover:border-amber-500/30 transition-all shadow-lg">
+                  <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/5 rounded-full filter blur-2xl group-hover:bg-amber-500/10 transition-all"></div>
+                  <div className="flex justify-between items-center text-slate-400 text-xs font-medium mb-2">
+                    <span>Total Time Deposit Vaults</span>
+                    <Wallet className="w-4 h-4 text-amber-400" />
+                  </div>
+                  <div className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight font-mono">
+                    {formatMoney(totalAssetsPHP)}
+                  </div>
+                  <div className="mt-3 flex items-center justify-between text-xs">
+                    <span className="text-slate-400">Locked Assets: <strong className="text-emerald-400">2 Accounts</strong></span>
+                    <span className="text-amber-400 text-[11px] font-semibold bg-amber-500/10 px-2 py-0.5 rounded">Maturity: June 30, 2030</span>
+                  </div>
+                </div>
+
+                {/* Mama Account Quick Card */}
+                <div 
+                  onClick={() => setActiveTab('mama-detail')}
+                  className="bg-[#121824] rounded-2xl p-5 border border-slate-800 hover:border-amber-500/50 cursor-pointer transition-all shadow-lg hover:translate-y-[-2px] group"
+                >
+                  <div className="flex justify-between items-center text-xs font-medium text-slate-400 mb-2">
+                    <div className="flex items-center space-x-2">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                      <span className="font-semibold text-slate-200">Mama Account</span>
+                    </div>
+                    <Lock className="w-4 h-4 text-amber-400 group-hover:scale-110 transition-transform" />
+                  </div>
+                  <div className="text-2xl font-bold text-white font-mono">
+                    {formatMoney(mamaTotalPHP)}
+                  </div>
+                  <div className="mt-3 flex justify-between items-center text-xs text-slate-400">
+                    <span>Status: <strong className="text-emerald-400">ACTIVE</strong></span>
+                    <span className="text-amber-400 font-medium group-hover:underline flex items-center">View Ledger &rarr;</span>
+                  </div>
+                </div>
+
+                {/* My Account Quick Card */}
+                <div 
+                  onClick={() => setActiveTab('my-detail')}
+                  className="bg-[#121824] rounded-2xl p-5 border border-slate-800 hover:border-amber-500/50 cursor-pointer transition-all shadow-lg hover:translate-y-[-2px] group"
+                >
+                  <div className="flex justify-between items-center text-xs font-medium text-slate-400 mb-2">
+                    <div className="flex items-center space-x-2">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                      <span className="font-semibold text-slate-200">My Account</span>
+                    </div>
+                    <Lock className="w-4 h-4 text-amber-400 group-hover:scale-110 transition-transform" />
+                  </div>
+                  <div className="text-2xl font-bold text-white font-mono">
+                    {formatMoney(myTotalPHP)}
+                  </div>
+                  <div className="mt-3 flex justify-between items-center text-xs text-slate-400">
+                    <span>Status: <strong className="text-emerald-400">ACTIVE</strong></span>
+                    <span className="text-amber-400 font-medium group-hover:underline flex items-center">View Ledger &rarr;</span>
+                  </div>
+                </div>
+
+              </div>
+
+              {/* TIME DEPOSIT HUB PROMINENT BANNER */}
+              <div className="bg-gradient-to-br from-[#121824] via-[#1A2333] to-[#121824] rounded-2xl p-6 border border-amber-500/40 relative overflow-hidden shadow-xl">
+                <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 relative z-10">
+                  <div className="space-y-2 max-w-xl">
+                    <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-semibold">
+                      <Lock className="w-3.5 h-3.5" />
+                      <span>Guaranteed Maturity Lock-In System</span>
+                    </div>
+                    <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight">
+                      Manage Time Deposit Accounts
+                    </h2>
+                    <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
+                      Review locked capital balances, deposit dates, and complete mathematical transaction history for <strong>Mama Account</strong> and <strong>My Account</strong>.
+                    </p>
+                  </div>
+
+                  <button
+                    onClick={() => setActiveTab('time-deposit')}
+                    className="px-6 py-3.5 bg-gradient-to-r from-amber-500 to-yellow-400 text-slate-950 font-black text-sm rounded-xl hover:from-amber-400 hover:to-yellow-300 shadow-lg shadow-amber-500/20 transition-all flex items-center space-x-2 shrink-0"
+                  >
+                    <LockKeyhole className="w-4 h-4" />
+                    <span>OPEN TIME DEPOSIT HUB</span>
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              {/* LIVE MARKET SUMMARY GRID */}
+              <div className="bg-[#121824] rounded-2xl border border-slate-800 p-5 space-y-4">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-base font-bold text-white flex items-center gap-2">
+                      <Activity className="w-4 h-4 text-amber-400" />
+                      Real-Time Crypto Market Overview
+                    </h3>
+                    <p className="text-xs text-slate-400">Live prices sourced via CoinGecko protocol API (Auto-refreshes every 30s)</p>
+                  </div>
+                  <div className="flex items-center space-x-3 text-xs text-slate-400">
+                    <span>Updated: {lastUpdated}</span>
+                    <button
+                      onClick={fetchMarketPrices}
+                      disabled={isRefreshing}
+                      className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-400 disabled:opacity-50 transition-colors"
+                      title="Force Refresh Prices"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Market Table */}
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr className="border-b border-slate-800 text-slate-400 uppercase text-[10px] tracking-wider">
+                        <th className="py-3 px-3">Asset</th>
+                        <th className="py-3 px-3">Price ({currency})</th>
+                        <th className="py-3 px-3">24h Change</th>
+                        <th className="py-3 px-3 text-right">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800/50">
+                      {cryptoData.map((coin) => {
+                        const isPositive = coin.change24h >= 0;
+                        return (
+                          <tr 
+                            key={coin.id} 
+                            onClick={() => { setSelectedAsset(coin); setActiveTab('market'); }}
+                            className="hover:bg-slate-800/40 cursor-pointer transition-colors"
+                          >
+                            <td className="py-3 px-3 flex items-center space-x-3">
+                              <div className="w-7 h-7 rounded-full bg-amber-500/10 border border-amber-500/20 flex items-center justify-center font-bold text-amber-400 text-xs">
+                                {coin.symbol.slice(0, 3)}
+                              </div>
+                              <div>
+                                <p className="font-bold text-white">{coin.name}</p>
+                                <p className="text-[10px] text-slate-400">{coin.symbol}</p>
+                              </div>
+                            </td>
+                            <td className="py-3 px-3 font-mono font-semibold text-slate-100">
+                              {formatCryptoPrice(coin.fallbackPrice)}
+                            </td>
+                            <td className="py-3 px-3 font-semibold">
+                              <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] ${
+                                isPositive 
+                                  ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' 
+                                  : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
+                              }`}>
+                                {isPositive ? <TrendingUp className="w-3 h-3 mr-1" /> : <TrendingDown className="w-3 h-3 mr-1" />}
+                                {isPositive ? '+' : ''}{coin.change24h}%
+                              </span>
+                            </td>
+                            <td className="py-3 px-3 text-right">
+                              <button className="text-amber-400 hover:text-amber-300 font-semibold text-[11px] hover:underline">
+                                Trade / View
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+            </div>
+          )}
+
+          {/* ==================== VIEW 2: CRYPTO MARKET & CHARTS ==================== */}
+          {activeTab === 'market' && (
+            <div className="space-y-6">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <div>
+                  <h2 className="text-xl font-bold text-white">Cryptocurrency Market</h2>
+                  <p className="text-xs text-slate-400">Interactive financial charts & price analytics for supported digital assets</p>
+                </div>
+                
+                {/* Timeframe selector */}
+                <div className="bg-[#121824] p-1 rounded-xl border border-slate-800 flex items-center space-x-1">
+                  {['24h', '7d', '30d'].map((tf) => (
+                    <button
+                      key={tf}
+                      onClick={() => setChartTimeframe(tf)}
+                      className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+                        chartTimeframe === tf 
+                          ? 'bg-amber-500 text-slate-950 shadow' 
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      {tf.toUpperCase()}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* DETAILED ASSET CHART CARD */}
+              <div className="bg-[#121824] rounded-2xl border border-slate-800 p-6 space-y-4">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-800/80 pb-4">
+                  <div className="flex items-center space-x-3">
+                    <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center font-black text-amber-400 text-sm">
+                      {selectedAsset.symbol}
+                    </div>
+                    <div>
+                      <div className="flex items-center space-x-2">
+                        <h3 className="text-lg font-bold text-white">{selectedAsset.name}</h3>
+                        <span className="text-xs font-mono text-slate-400">({selectedAsset.symbol})</span>
+                      </div>
+                      <p className="text-2xl font-black text-white font-mono">
+                        {formatCryptoPrice(selectedAsset.fallbackPrice)}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center space-x-3">
+                    <span className={`inline-flex items-center px-3 py-1.5 rounded-lg text-xs font-bold ${
+                      selectedAsset.change24h >= 0 
+                        ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30' 
+                        : 'bg-rose-500/10 text-rose-400 border border-rose-500/30'
+                    }`}>
+                      {selectedAsset.change24h >= 0 ? <TrendingUp className="w-4 h-4 mr-1" /> : <TrendingDown className="w-4 h-4 mr-1" />}
+                      {selectedAsset.change24h >= 0 ? '+' : ''}{selectedAsset.change24h}% (24h)
+                    </span>
+                  </div>
+                </div>
+
+                {/* Recharts Graphical Display */}
+                <div className="h-64 sm:h-80 w-full pt-4">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={chartData}>
+                      <defs>
+                        <linearGradient id="cryptoGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#F0B90B" stopOpacity={0.3}/>
+                          <stop offset="95%" stopColor="#F0B90B" stopOpacity={0}/>
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#1A2333" />
+                      <XAxis dataKey="time" stroke="#64748b" fontSize={11} tickLine={false} />
+                      <YAxis stroke="#64748b" fontSize={11} tickLine={false} domain={['auto', 'auto']} />
+                      <Tooltip 
+                        contentStyle={{ backgroundColor: '#121824', borderColor: '#334155', borderRadius: '8px', color: '#fff' }}
+                        formatter={(val) => [`${currency === 'PHP' ? '₱' : '$'}${Number(val).toLocaleString()}`, 'Price']}
+                      />
+                      <Area type="monotone" dataKey="price" stroke="#F0B90B" strokeWidth={2} fillOpacity={1} fill="url(#cryptoGrad)" />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+
+              {/* ASSETS SELECTION GRID */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                {cryptoData.map((coin) => (
+                  <div
+                    key={coin.id}
+                    onClick={() => setSelectedAsset(coin)}
+                    className={`bg-[#121824] p-4 rounded-2xl border cursor-pointer transition-all ${
+                      selectedAsset.id === coin.id 
+                        ? 'border-amber-500 bg-slate-800/30 ring-1 ring-amber-500/50' 
+                        : 'border-slate-800 hover:border-slate-700'
+                    }`}
+                  >
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="font-bold text-white text-sm">{coin.name}</span>
+                      <span className="text-xs text-slate-400 font-mono">{coin.symbol}</span>
+                    </div>
+                    <p className="text-lg font-bold font-mono text-slate-100">
+                      {formatCryptoPrice(coin.fallbackPrice)}
+                    </p>
+                    <div className="mt-2 flex justify-between items-center text-xs">
+                      <span className={coin.change24h >= 0 ? 'text-emerald-400 font-semibold' : 'text-rose-400 font-semibold'}>
+                        {coin.change24h >= 0 ? '+' : ''}{coin.change24h}%
+                      </span>
+                      <span className="text-amber-400 text-[11px]">Select &rarr;</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ==================== VIEW 3: TIME DEPOSIT HUB ==================== */}
+          {activeTab === 'time-deposit' && (
+            <div className="space-y-6">
+              <div>
+                <h2 className="text-2xl font-black text-white tracking-tight">MY TIME DEPOSIT ACCOUNTS</h2>
+                <p className="text-xs text-slate-400 mt-1">
+                  Active time deposit placement accounts configured under maturity lock-in protocols.
+                </p>
+              </div>
+
+              {/* TWO ACCOUNT CARDS */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                
+                {/* CARD 1: MAMA ACCOUNT */}
+                <div 
+                  onClick={() => setActiveTab('mama-detail')}
+                  className="bg-gradient-to-br from-[#121824] to-[#1A2333] rounded-2xl p-6 border border-slate-800 hover:border-amber-500 cursor-pointer transition-all shadow-xl hover:translate-y-[-2px] relative group"
+                >
+                  <div className="flex justify-between items-start mb-4">
+                    <div>
+                      <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+                        CARD 1
+                      </span>
+                      <h3 className="text-xl font-bold text-white mt-1">Mama Account</h3>
+                      <p className="text-xs text-slate-400">Created: January 2025</p>
+                    </div>
+                    <span className="px-2.5 py-1 rounded-full text-[11px] font-extrabold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                      ACTIVE
+                    </span>
+                  </div>
+
+                  <div className="my-6 p-4 rounded-xl bg-[#0A0E17]/60 border border-slate-800/80">
+                    <p className="text-xs text-slate-400 mb-1">Current Principal Balance</p>
+                    <p className="text-3xl font-black text-white font-mono tracking-tight">
+                      {formatMoney(mamaTotalPHP)}
+                    </p>
+                  </div>
+
+                  <div className="flex items-center justify-between text-xs text-slate-300 pt-2 border-t border-slate-800">
+                    <div className="flex items-center space-x-1.5 text-amber-400 font-semibold">
+                      <Lock className="w-4 h-4" />
+                      <span>Withdrawal: June 30, 2030</span>
+                    </div>
+                    <span className="text-amber-400 font-bold group-hover:underline flex items-center">
+                      View Ledger &rarr;
+                    </span>
+                  </div>
+                </div>
+
+                {/* CARD 2: MY ACCOUNT */}
+                <div 
+                  onClick={() => setActiveTab('my-detail')}
+                  className="bg-gradient-to-br from-[#121824] to-[#1A2333] rounded-2xl p-6 border border-slate-800 hover:border-amber-500 cursor-pointer transition-all shadow-xl hover:translate-y-[-2px] relative group"
+                >
+                  <div className="flex justify-between items-start mb-4">
+                    <div>
+                      <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+                        CARD 2
+                      </span>
+                      <h3 className="text-xl font-bold text-white mt-1">My Account</h3>
+                      <p className="text-xs text-slate-400">Created: November 2024</p>
+                    </div>
+                    <span className="px-2.5 py-1 rounded-full text-[11px] font-extrabold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                      ACTIVE
+                    </span>
+                  </div>
+
+                  <div className="my-6 p-4 rounded-xl bg-[#0A0E17]/60 border border-slate-800/80">
+                    <p className="text-xs text-slate-400 mb-1">Current Principal Balance</p>
+                    <p className="text-3xl font-black text-white font-mono tracking-tight">
+                      {formatMoney(myTotalPHP)}
+                    </p>
+                  </div>
+
+                  <div className="flex items-center justify-between text-xs text-slate-300 pt-2 border-t border-slate-800">
+                    <div className="flex items-center space-x-1.5 text-amber-400 font-semibold">
+                      <Lock className="w-4 h-4" />
+                      <span>Withdrawal: June 30, 2030</span>
+                    </div>
+                    <span className="text-amber-400 font-bold group-hover:underline flex items-center">
+                      View Ledger &rarr;
+                    </span>
+                  </div>
+                </div>
+
+              </div>
+
+              {/* LOCK IN POLICY EMBEDDED SUMMARY */}
+              <div className="bg-[#121824] rounded-2xl border border-slate-800 p-6 space-y-4">
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <Shield className="w-4 h-4 text-amber-400" />
+                  Time Deposit Lock-In Terms
+                </h3>
+                <ul className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs text-slate-300">
+                  <li className="flex items-start space-x-2">
+                    <span className="text-amber-400 font-bold">•</span>
+                    <span>Funds deposited cannot be withdrawn prior to the set maturity date.</span>
+                  </li>
+                  <li className="flex items-start space-x-2">
+                    <span className="text-amber-400 font-bold">•</span>
+                    <span>The scheduled maturity date is exactly <strong>June 30, 2030</strong>.</span>
+                  </li>
+                  <li className="flex items-start space-x-2">
+                    <span className="text-amber-400 font-bold">•</span>
+                    <span>Early manual withdrawal controls are disabled in the user portal.</span>
+                  </li>
+                  <li className="flex items-start space-x-2">
+                    <span className="text-amber-400 font-bold">•</span>
+                    <span>All transactions are recorded with persistent cryptographic transaction references.</span>
+                  </li>
+                </ul>
+              </div>
+            </div>
+          )}
+
+          {/* ==================== VIEW 4: MAMA ACCOUNT DETAILS ==================== */}
+          {activeTab === 'mama-detail' && (
+            <div className="space-y-6">
+              <button 
+                onClick={() => setActiveTab('time-deposit')}
+                className="text-xs text-amber-400 hover:text-amber-300 font-semibold flex items-center gap-1 mb-2"
+              >
+                &larr; Back to Time Deposit Accounts
+              </button>
+
+              {/* Top Details Header */}
+              <div className="bg-[#121824] rounded-2xl p-6 border border-slate-800 space-y-4 shadow-lg">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-4">
+                  <div>
+                    <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+                      TIME DEPOSIT ACCOUNT
+                    </span>
+                    <h2 className="text-2xl font-black text-white mt-1">Mama Account</h2>
+                    <p className="text-xs text-slate-400">Created: January 15, 2025</p>
+                  </div>
+                  <span className="self-start sm:self-center px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                    ACTIVE
+                  </span>
+                </div>
+
+                <div>
+                  <p className="text-xs text-slate-400 uppercase tracking-wider font-semibold">Account Balance</p>
+                  <p className="text-3xl sm:text-4xl font-black text-white font-mono mt-1">
+                    {formatMoney(mamaTotalPHP)}
+                  </p>
+                </div>
+
+                <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3.5 flex items-center space-x-3 text-amber-300 text-xs font-medium">
+                  <Lock className="w-5 h-5 text-amber-400 shrink-0" />
+                  <span>Time Deposit Account to be withdrawn on exactly June 30, 2030.</span>
+                </div>
+              </div>
+
+              {/* Deposit History */}
+              <div className="bg-[#121824] rounded-2xl border border-slate-800 p-6 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <h3 className="text-base font-bold text-white uppercase tracking-wider">
+                    Deposit Transaction History
+                  </h3>
+                  <span className="text-xs text-slate-400">Sorted Descending Chronological Order</span>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr className="border-b border-slate-800 text-slate-400 uppercase text-[10px] tracking-wider">
+                        <th className="py-3 px-3">Date</th>
+                        <th className="py-3 px-3">Reference No.</th>
+                        <th className="py-3 px-3">Description</th>
+                        <th className="py-3 px-3">Status</th>
+                        <th className="py-3 px-3 text-right">Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800/50 font-mono">
+                      {mamaTxns.map((txn) => (
+                        <tr key={txn.id} className="hover:bg-slate-800/30 transition-colors">
+                          <td className="py-3 px-3 whitespace-nowrap text-slate-300">
+                            {txn.date}
+                            <span className="block text-[10px] text-slate-500 font-sans">{txn.monthYear}</span>
+                          </td>
+                          <td className="py-3 px-3 whitespace-nowrap">
+                            <button
+                              onClick={() => handleCopyRef(txn.id)}
+                              className="text-amber-400 hover:underline flex items-center gap-1 font-mono text-[11px]"
+                              title="Click to copy reference"
+                            >
+                              {txn.id}
+                              {copiedRef === txn.id ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3 opacity-60" />}
+                            </button>
+                          </td>
+                          <td className="py-3 px-3 font-sans text-slate-200">{txn.description}</td>
+                          <td className="py-3 px-3 whitespace-nowrap">
+                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                              {txn.status}
+                            </span>
+                          </td>
+                          <td className="py-3 px-3 text-right font-bold text-emerald-400 font-mono whitespace-nowrap">
+                            +{formatMoney(txn.amount)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Summary Card at Bottom */}
+                <div className="bg-[#0A0E17] p-4 rounded-xl border border-slate-800 flex justify-between items-center text-xs sm:text-sm font-bold">
+                  <span className="text-slate-300">TOTAL DEPOSITED PRINCIPAL:</span>
+                  <span className="text-amber-400 font-mono text-base">{formatMoney(mamaTotalPHP)}</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ==================== VIEW 5: MY ACCOUNT DETAILS ==================== */}
+          {activeTab === 'my-detail' && (
+            <div className="space-y-6">
+              <button 
+                onClick={() => setActiveTab('time-deposit')}
+                className="text-xs text-amber-400 hover:text-amber-300 font-semibold flex items-center gap-1 mb-2"
+              >
+                &larr; Back to Time Deposit Accounts
+              </button>
+
+              {/* Top Details Header */}
+              <div className="bg-[#121824] rounded-2xl p-6 border border-slate-800 space-y-4 shadow-lg">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-4">
+                  <div>
+                    <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+                      TIME DEPOSIT ACCOUNT
+                    </span>
+                    <h2 className="text-2xl font-black text-white mt-1">My Account</h2>
+                    <p className="text-xs text-slate-400">Created: November 10, 2024</p>
+                  </div>
+                  <span className="self-start sm:self-center px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                    ACTIVE
+                  </span>
+                </div>
+
+                <div>
+                  <p className="text-xs text-slate-400 uppercase tracking-wider font-semibold">Account Balance</p>
+                  <p className="text-3xl sm:text-4xl font-black text-white font-mono mt-1">
+                    {formatMoney(myTotalPHP)}
+                  </p>
+                </div>
+
+                <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3.5 flex items-center space-x-3 text-amber-300 text-xs font-medium">
+                  <Lock className="w-5 h-5 text-amber-400 shrink-0" />
+                  <span>Time Deposit Account to be withdrawn on exactly June 30, 2030.</span>
+                </div>
+              </div>
+
+              {/* Deposit History */}
+              <div className="bg-[#121824] rounded-2xl border border-slate-800 p-6 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <h3 className="text-base font-bold text-white uppercase tracking-wider">
+                    Deposit Transaction History
+                  </h3>
+                  <span className="text-xs text-slate-400">Sorted Descending Chronological Order</span>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr className="border-b border-slate-800 text-slate-400 uppercase text-[10px] tracking-wider">
+                        <th className="py-3 px-3">Date</th>
+                        <th className="py-3 px-3">Reference No.</th>
+                        <th className="py-3 px-3">Description</th>
+                        <th className="py-3 px-3">Status</th>
+                        <th className="py-3 px-3 text-right">Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800/50 font-mono">
+                      {myTxns.map((txn) => (
+                        <tr key={txn.id} className="hover:bg-slate-800/30 transition-colors">
+                          <td className="py-3 px-3 whitespace-nowrap text-slate-300">
+                            {txn.date}
+                            <span className="block text-[10px] text-slate-500 font-sans">{txn.monthYear}</span>
+                          </td>
+                          <td className="py-3 px-3 whitespace-nowrap">
+                            <button
+                              onClick={() => handleCopyRef(txn.id)}
+                              className="text-amber-400 hover:underline flex items-center gap-1 font-mono text-[11px]"
+                              title="Click to copy reference"
+                            >
+                              {txn.id}
+                              {copiedRef === txn.id ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3 opacity-60" />}
+                            </button>
+                          </td>
+                          <td className="py-3 px-3 font-sans text-slate-200">{txn.description}</td>
+                          <td className="py-3 px-3 whitespace-nowrap">
+                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                              {txn.status}
+                            </span>
+                          </td>
+                          <td className="py-3 px-3 text-right font-bold text-emerald-400 font-mono whitespace-nowrap">
+                            +{formatMoney(txn.amount)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Summary Card at Bottom */}
+                <div className="bg-[#0A0E17] p-4 rounded-xl border border-slate-800 flex justify-between items-center text-xs sm:text-sm font-bold">
+                  <span className="text-slate-300">TOTAL DEPOSITED PRINCIPAL:</span>
+                  <span className="text-amber-400 font-mono text-base">{formatMoney(myTotalPHP)}</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ==================== VIEW 6: ACCOUNT HISTORY & SEARCH ==================== */}
+          {activeTab === 'transactions' && (
+            <div className="space-y-6">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <div>
+                  <h2 className="text-xl font-bold text-white">Global Account History</h2>
+                  <p className="text-xs text-slate-400">Searchable consolidated transaction logs for all time deposit accounts</p>
+                </div>
+
+                {/* Search Bar */}
+                <div className="relative w-full sm:w-72">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search ref, date, or amount..."
+                    className="w-full bg-[#121824] border border-slate-700/80 rounded-xl pl-9 pr-4 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 transition-colors"
+                  />
+                </div>
+              </div>
+
+              <div className="bg-[#121824] rounded-2xl border border-slate-800 p-6">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr className="border-b border-slate-800 text-slate-400 uppercase text-[10px] tracking-wider">
+                        <th className="py-3 px-3">Account</th>
+                        <th className="py-3 px-3">Date</th>
+                        <th className="py-3 px-3">Reference No.</th>
+                        <th className="py-3 px-3">Description</th>
+                        <th className="py-3 px-3 text-right">Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800/50 font-mono">
+                      {combinedTxns.length > 0 ? (
+                        combinedTxns.map((txn) => (
+                          <tr key={txn.id} className="hover:bg-slate-800/30 transition-colors">
+                            <td className="py-3 px-3 font-sans font-semibold text-amber-400">{txn.account}</td>
+                            <td className="py-3 px-3 text-slate-300 font-sans">{txn.date}</td>
+                            <td className="py-3 px-3 text-slate-400 font-mono text-[11px]">{txn.id}</td>
+                            <td className="py-3 px-3 font-sans text-slate-200">{txn.description}</td>
+                            <td className="py-3 px-3 text-right font-bold text-emerald-400 font-mono">
+                              +{formatMoney(txn.amount)}
+                            </td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td colSpan="5" className="py-8 text-center text-slate-500 text-xs">
+                            No transactions found matching "{searchQuery}"
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ==================== VIEW 7: HELP CENTER / FAQ & LOCK-IN POLICY ==================== */}
+          {activeTab === 'faq' && (
+            <div className="space-y-6 max-w-4xl mx-auto">
+              <div>
+                <h2 className="text-2xl font-black text-white">HELP CENTER & LOCK-IN POLICY</h2>
+                <p className="text-xs text-slate-400 mt-1">Frequently asked questions and verified lock-in rules for Time Deposit accounts</p>
+              </div>
+
+              {/* ACCOUNT LOCK-IN POLICY BOX */}
+              <div className="bg-[#121824] rounded-2xl border border-amber-500/40 p-6 space-y-4 shadow-lg">
+                <div className="flex items-center space-x-3 border-b border-slate-800 pb-3">
+                  <Shield className="w-5 h-5 text-amber-400" />
+                  <h3 className="text-lg font-bold text-white">ACCOUNT LOCK-IN POLICY</h3>
+                </div>
+
+                <ol className="list-decimal list-inside space-y-2 text-xs text-slate-300 leading-relaxed font-sans">
+                  <li>Funds deposited into a time deposit account cannot be withdrawn before the maturity date.</li>
+                  <li>The scheduled withdrawal date is exactly <strong>June 30, 2030</strong>.</li>
+                  <li>Early withdrawal is disabled in the account interface.</li>
+                  <li>Users cannot manually change the maturity date.</li>
+                  <li>The account balance and deposit history cannot be edited by ordinary users.</li>
+                  <li>Account information must be protected through secure authentication.</li>
+                  <li>Withdrawals on the maturity date must follow the actual account provider's verified terms and withdrawal process.</li>
+                  <li>Any applicable interest, penalties, taxes, or fees must be disclosed according to the actual product agreement.</li>
+                </ol>
+
+                <div className="bg-amber-500/10 border-l-4 border-amber-500 p-4 rounded-r-xl text-xs text-amber-200 italic">
+                  "IMPORTANT NOTICE: Your time deposit is subject to its agreed lock-in period. Early withdrawal is unavailable under the configured account terms. Please review the applicable account agreement for maturity and withdrawal conditions."
+                </div>
+              </div>
+
+              {/* FAQ EXPANDABLE ACCORDION */}
+              <div className="bg-[#121824] rounded-2xl border border-slate-800 p-6 space-y-3">
+                <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+                  <HelpCircle className="w-5 h-5 text-amber-400" />
+                  Frequently Asked Questions
+                </h3>
+
+                <div className="space-y-2">
+                  {FAQS.map((faq, idx) => {
+                    const isOpen = expandedFaq === idx;
+                    return (
+                      <div 
+                        key={idx}
+                        className="border border-slate-800 rounded-xl overflow-hidden bg-[#0A0E17]/40 transition-colors"
+                      >
+                        <button
+                          onClick={() => setExpandedFaq(isOpen ? null : idx)}
+                          className="w-full text-left p-4 flex justify-between items-center text-xs sm:text-sm font-semibold text-slate-200 hover:text-amber-400 transition-colors"
+                        >
+                          <span>{faq.q}</span>
+                          <ChevronDown className={`w-4 h-4 transition-transform ${isOpen ? 'rotate-180 text-amber-400' : 'text-slate-500'}`} />
+                        </button>
+                        {isOpen && (
+                          <div className="p-4 pt-0 text-xs text-slate-400 leading-relaxed border-t border-slate-800/60 bg-[#121824]/50">
+                            {faq.a}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ==================== VIEW 8: SETTINGS ==================== */}
+          {activeTab === 'settings' && (
+            <div className="space-y-6 max-w-3xl">
+              <div>
+                <h2 className="text-xl font-bold text-white">Platform Settings</h2>
+                <p className="text-xs text-slate-400">Manage account security, preferences, and display units</p>
+              </div>
+
+              <div className="bg-[#121824] rounded-2xl border border-slate-800 p-6 space-y-6">
+                <div>
+                  <h3 className="text-sm font-bold text-white mb-3">Currency Display</h3>
+                  <div className="flex items-center space-x-4 text-xs">
+                    <label className="flex items-center space-x-2 cursor-pointer">
+                      <input 
+                        type="radio" 
+                        name="currencyPref" 
+                        checked={currency === 'PHP'} 
+                        onChange={() => setCurrency('PHP')}
+                        className="text-amber-500 focus:ring-amber-500"
+                      />
+                      <span className="text-slate-200">Philippine Peso (₱ PHP)</span>
+                    </label>
+                    <label className="flex items-center space-x-2 cursor-pointer">
+                      <input 
+                        type="radio" 
+                        name="currencyPref" 
+                        checked={currency === 'USD'} 
+                        onChange={() => setCurrency('USD')}
+                        className="text-amber-500 focus:ring-amber-500"
+                      />
+                      <span className="text-slate-200">US Dollar ($ USD)</span>
+                    </label>
+                  </div>
+                </div>
+
+                <div className="border-t border-slate-800 pt-4">
+                  <h3 className="text-sm font-bold text-white mb-3">Privacy & Security</h3>
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between text-xs text-slate-300">
+                      <span>Hide account balances by default</span>
+                      <input 
+                        type="checkbox" 
+                        checked={hideBalances} 
+                        onChange={(e) => setHideBalances(e.target.checked)}
+                        className="rounded text-amber-500 focus:ring-amber-500" 
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="border-t border-slate-800 pt-4">
+                  <button 
+                    onClick={() => {
+                      if (window.confirm("Reset locally simulated transactions to default?")) {
+                        localStorage.removeItem('btc_bank_mama_txns');
+                        localStorage.removeItem('btc_bank_my_txns');
+                        setMamaTxns(INITIAL_MAMA_TRANSACTIONS);
+                        setMyTxns(INITIAL_MY_TRANSACTIONS);
+                      }
+                    }}
+                    className="px-4 py-2 bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs font-semibold rounded-xl hover:bg-rose-500/20 transition-colors"
+                  >
+                    Reset Simulated Local Audit Data
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+        </main>
+      </div>
+
+      {/* MOBILE BOTTOM NAVIGATION BAR */}
+      <div className="md:hidden fixed bottom-0 left-0 right-0 bg-[#121824]/95 backdrop-blur-lg border-t border-slate-800/90 z-50 px-2 py-2 flex justify-around items-center">
+        <button
+          onClick={() => setActiveTab('home')}
+          className={`flex flex-col items-center p-1.5 ${activeTab === 'home' ? 'text-amber-400' : 'text-slate-500'}`}
+        >
+          <Home className="w-5 h-5" />
+          <span className="text-[10px] mt-0.5">Home</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('market')}
+          className={`flex flex-col items-center p-1.5 ${activeTab === 'market' ? 'text-amber-400' : 'text-slate-500'}`}
+        >
+          <Activity className="w-5 h-5" />
+          <span className="text-[10px] mt-0.5">Market</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('time-deposit')}
+          className={`flex flex-col items-center p-1.5 ${['time-deposit', 'mama-detail', 'my-detail'].includes(activeTab) ? 'text-amber-400' : 'text-slate-500'}`}
+        >
+          <LockKeyhole className="w-5 h-5" />
+          <span className="text-[10px] mt-0.5">Vaults</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('transactions')}
+          className={`flex flex-col items-center p-1.5 ${activeTab === 'transactions' ? 'text-amber-400' : 'text-slate-500'}`}
+        >
+          <FileText className="w-5 h-5" />
+          <span className="text-[10px] mt-0.5">History</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('faq')}
+          className={`flex flex-col items-center p-1.5 ${activeTab === 'faq' ? 'text-amber-400' : 'text-slate-500'}`}
+        >
+          <HelpCircle className="w-5 h-5" />
+          <span className="text-[10px] mt-0.5">Help</span>
+        </button>
+      </div>
+
+      {/* SIMULATION DEPOSIT MODAL */}
+      {isDepositModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#121824] border border-slate-700/80 rounded-2xl w-full max-w-md p-6 space-y-4 shadow-2xl animate-in fade-in zoom-in-95">
+            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <PlusCircle className="w-5 h-5 text-amber-400" />
+                Simulate Time Deposit Top-Up
+              </h3>
+              <button 
+                onClick={() => setIsDepositModalOpen(false)}
+                className="text-slate-400 hover:text-white text-lg font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleAddDeposit} className="space-y-4 text-xs">
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Target Vault Account</label>
+                <select
+                  value={depositAccountTarget}
+                  onChange={(e) => setDepositAccountTarget(e.target.value)}
+                  className="w-full bg-[#0A0E17] border border-slate-700 rounded-xl p-2.5 text-white focus:outline-none focus:border-amber-500"
+                >
+                  <option value="mama">Mama Account (Current Total: ₱{mamaTotalPHP.toLocaleString()})</option>
+                  <option value="my">My Account (Current Total: ₱{myTotalPHP.toLocaleString()})</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Deposit Amount (PHP ₱)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  required
+                  placeholder="e.g. 5000.00"
+                  value={depositAmount}
+                  onChange={(e) => setDepositAmount(e.target.value)}
+                  className="w-full bg-[#0A0E17] border border-slate-700 rounded-xl p-2.5 text-white font-mono focus:outline-none focus:border-amber-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Description / Memo</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Additional Savings Top-Up"
+                  value={depositDesc}
+                  onChange={(e) => setDepositDesc(e.target.value)}
+                  className="w-full bg-[#0A0E17] border border-slate-700 rounded-xl p-2.5 text-white focus:outline-none focus:border-amber-500"
+                />
+              </div>
+
+              <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-[11px] text-amber-300">
+                Note: This simulation appends a ledger entry directly into local storage audit tables without modifying lock-in dates.
+              </div>
+
+              <div className="flex justify-end space-x-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsDepositModalOpen(false)}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-semibold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-gradient-to-r from-amber-500 to-yellow-400 text-slate-950 rounded-xl font-bold hover:from-amber-400 hover:to-yellow-300"
+                >
+                  Add Entry
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+}
